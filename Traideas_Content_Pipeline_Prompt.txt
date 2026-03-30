@@ -1,0 +1,341 @@
+Here's a complete, copy-paste-ready prompt for Claude Code:
+
+---
+
+```
+Build a full-stack content pipeline management app called "Traideas Content Pipeline" using Next.js (App Router) with a SQLite database. The entire app runs on a single port with API routes handled internally via Next.js route handlers. Use better-sqlite3 for the database (synchronous, no separate server needed). Style with Tailwind CSS and use lucide-react for all icons.
+
+---
+
+## TECH STACK
+
+- Next.js 14+ (App Router)
+- better-sqlite3 (SQLite, runs in-process, no separate DB server)
+- Tailwind CSS
+- lucide-react (icons throughout)
+- No authentication — browser fingerprint (navigator.userAgent + screen dimensions stored in localStorage) is used to "pin" the current user per device
+
+---
+
+## DATABASE SCHEMA (initialize on first run via db/init.ts)
+
+```sql
+CREATE TABLE IF NOT EXISTS team_members (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  initials TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS weekly_operators (
+  week_key TEXT PRIMARY KEY,  -- ISO date of Sunday e.g. "2026-03-29"
+  member_id TEXT NOT NULL,
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+
+CREATE TABLE IF NOT EXISTS contents (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL,
+  week_key TEXT NOT NULL,       -- Sunday of that week ISO date
+  title TEXT DEFAULT '',
+  type TEXT DEFAULT '',         -- enum key
+  mediums TEXT DEFAULT '[]',    -- JSON array of strings
+  status TEXT DEFAULT 'pending_title',
+  link_post TEXT DEFAULT '',
+  link_doc TEXT DEFAULT '',
+  link_file TEXT DEFAULT '',
+  publish_date TEXT DEFAULT '',
+  carried INTEGER DEFAULT 0,    -- 1 if carried from a previous week
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+
+CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  content_id TEXT NOT NULL,
+  reviewer_name TEXT NOT NULL,
+  note TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (content_id) REFERENCES contents(id)
+);
+
+CREATE TABLE IF NOT EXISTS browser_pins (
+  browser_key TEXT PRIMARY KEY,  -- stored in localStorage, generated once per browser
+  member_id TEXT NOT NULL,
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+```
+
+Seed 5 sample team members on first run if the table is empty.
+
+---
+
+## NEXT.JS API ROUTES (all under /api/)
+
+All database access happens only in these route handlers. The frontend fetches from these.
+
+- GET/POST   /api/members          — list all, add new
+- DELETE     /api/members/[id]     — remove member
+- GET/POST   /api/contents         — list by week_key query param, add new
+- PATCH      /api/contents/[id]    — update title, type, mediums, status, links, publish_date
+- POST       /api/feedback         — add feedback note { content_id, reviewer_name, note }
+- GET        /api/operators        — get operator for a week_key
+- POST       /api/operators        — set operator for a week { week_key, member_id }
+- GET/POST   /api/pins             — get pinned member for a browser_key, set pin
+
+---
+
+## WEEK LOGIC (all in a utility file lib/weeks.ts)
+
+- A "week" runs Sunday to Thursday (5 days shown in the calendar strip)
+- week_key is always the ISO date string of that Sunday (e.g. "2026-03-29")
+- When navigating to a week, auto-create a "pending_title" content slot for any member who has no content that week AND no content in "writing", "content_submitted", or "revision" status from any prior week (those are "carried" and shown as carried items this week)
+- When a content is marked "scheduled" or "published", auto-create a new pending_title slot for that member in the NEXT week if one doesn't exist
+- Default starting week is the current week's Sunday
+
+---
+
+## CONTENT TYPES (enum)
+
+```
+byte        — Byte size post (80–150 words)
+insight     — Insight post (150–300 words)
+explainer   — Technical explainer (300–500 words)
+blog        — Blog (500+ words)
+slides      — Slides / Instagram post slide
+clips       — Clips (video)
+casestudy   — Case study
+resource    — Resource
+other       — Other
+```
+
+---
+
+## PUBLISHING MEDIUMS (multi-select toggle pills)
+
+Instagram, LinkedIn, Dev.to, Medium, Facebook, YouTube, Website blog, Case study, Other
+
+---
+
+## STATUS FLOW & ICONS
+
+Use lucide-react icons on all status badges and action buttons.
+
+```
+pending_title     → Clock icon         → amber badge
+title_submitted   → FileText icon      → yellow badge
+writing           → PenLine icon       → blue badge
+content_submitted → Eye icon           → orange badge
+revision          → RotateCcw icon     → red badge
+final             → CheckCircle icon   → green badge
+scheduled         → CalendarCheck icon → teal badge
+published         → Globe icon         → gray badge
+```
+
+Stage transition action buttons (shown in the detail panel) must each have an appropriate icon:
+- "Submit title" → ArrowRight icon
+- "Start writing" → PenLine icon
+- "Submit for review" → Send icon
+- "Request revision" → RotateCcw icon
+- "Mark as final" → CheckCircle icon (green, prominent)
+- "Schedule" → CalendarCheck icon
+- "Mark published" → Globe icon
+
+---
+
+## UI LAYOUT
+
+### Top bar
+- App name "Traideas Content Pipeline" left-aligned
+- Week navigator: ← Prev  |  Week label (e.g. "Mar 29 – Apr 2, 2026")  |  Next →
+- Pinned user display top right: shows avatar + name of pinned member (from localStorage browser_key), with a "Change" button that opens a picker. If no pin set, shows "Set your identity" button.
+- "+ Member" and "+ Content" buttons
+
+### Operator banner (below top bar)
+- Blue info banner showing the operator for the current week
+- Shows avatar + name + caption: "Operator this week — ensures titles by Mon AM and content by Thu AM"
+- "Reassign randomly" button (picks a different random member)
+
+### Calendar strip
+- 5 columns: Sun, Mon, Tue, Wed, Thu with date numbers
+- Highlight today's date
+- Mon label: "Title deadline" in amber text below
+- Thu label: "Content due" in red text below
+
+### Summary stat cards (4 cards in a row)
+- Awaiting review (count)
+- In progress (count)
+- Title pending (count)
+- Completed (count)
+
+### Tab navigation
+Three tabs: Pipeline | Board | Leaderboard
+
+---
+
+## PIPELINE TAB (team table view)
+
+Table columns: Avatar | Member name | Content (title + type badges + medium badges) | Feedback notes count | Status badge | View button
+
+- If a content has feedback, show "N feedback note(s)" as a small muted line below the content title (like "1 feedback note" or "3 feedback notes")
+- Carried items (from previous weeks) show a small "Carried from [date]" amber label above the title
+- If no content this week and no carried items: show "— no content" and a small "+ Add" button
+- Clicking "View" opens the detail side panel below the table
+
+---
+
+## BOARD TAB (kanban)
+
+7 columns: Title pending | Title submitted | Writing | Under review | In revision | Final | Scheduled
+
+Cards show: title (or italic "no title"), member avatar + first name, type badge. Click opens detail panel.
+
+---
+
+## LEADERBOARD TAB
+
+Full-width table. Columns:
+- Rank (#)
+- Member (avatar + name)
+- Total completed (large green number)
+- In progress (blue)
+- Active weeks (how many different weeks they have completed content)
+- Top format (most used content type)
+- Per-type counts for all 8 content types shown as small numbers (Byte, Insight, Explainer, Blog, Slides, Clips, Case study, Resource)
+
+NO per-week breakdown columns. Sort by total completed descending.
+
+---
+
+## DETAIL SIDE PANEL
+
+Opens below the main content area when a content item is selected. A full card with sections:
+
+1. Header: member avatar + name + week label + status badge + Close button
+
+2. Editable fields:
+   - Title (text input)
+   - Content type (dropdown with all types + word count hint)
+   - Publishing mediums (toggle pill buttons — active ones highlighted in blue)
+   - Links section: three URL inputs labeled "Post link", "Doc link", "File link"
+   - "Save changes" button (SaveIcon) — saves title, type, mediums, links
+
+3. Feedback history:
+   - If any feedback: show each note in a card with left blue border, reviewer name + date above, note text below
+   - Count shown as "[N] feedback note(s)" heading
+   - If no feedback: show muted "No feedback yet"
+
+4. Add feedback form:
+   - Textarea for note
+   - Input for reviewer name (pre-filled with pinned user name if set)
+   - "Add note" button (MessageSquare icon)
+
+5. Stage actions section (title: "Move to next stage"):
+   - Buttons with icons as specified above
+   - "Mark as final" button is green and prominent
+   - For "content_submitted" status: both "Request revision" (red outline) and "Mark as final" (green filled) shown side by side
+
+6. Schedule section (only shown when status === 'final'):
+   - Date picker input
+   - "Schedule" button (CalendarCheck icon, teal)
+
+7. Publish date display (if scheduled): green success box showing scheduled date
+
+---
+
+## BROWSER PIN FEATURE
+
+- On first load, if no browser_key in localStorage, generate one: `crypto.randomUUID()` and store as `localStorage.setItem('tcp_browser_key', key)`
+- On load, fetch GET /api/pins?browser_key=KEY to get pinned member
+- Store pinned member in React state (not localStorage — always fetched from DB)
+- Top-right "Set your identity" button: opens a small modal/dropdown showing all team members as avatar + name options. Click to pin. Calls POST /api/pins with { browser_key, member_id }
+- Once pinned, show the avatar + name in top right with a "Change" option
+- The pinned user's name pre-fills the "reviewer name" field when adding feedback
+- Each browser independently pins its own user — different browsers/devices can be different users
+
+---
+
+## ADD MEMBER FORM (inline panel)
+
+Fields: Full name (text), Initials (text, max 2 chars, auto-derived from name if blank)
+On save: POST /api/members, then auto-create a pending_title slot for this member for the current week
+
+---
+
+## ADD CONTENT FORM (inline panel)
+
+Fields: Member (dropdown), Title (optional text input)
+On save: POST /api/contents. If title provided, status = 'title_submitted', else 'pending_title'. Replace any existing pending_title slot for that member+week.
+
+---
+
+## MISC REQUIREMENTS
+
+- All data fetching uses React's useEffect + fetch (no external data-fetching library needed)
+- Use a single db singleton in lib/db.ts that initializes better-sqlite3 once and runs migrations/seed on first boot
+- All IDs are generated with crypto.randomUUID() on the server side in route handlers
+- week_key computation: given any date, find its preceding Sunday (getDay() offset), return ISO date string
+- Operator auto-assignment: when navigating to a week with no operator set, randomly pick a member and POST to /api/operators
+- Tailwind for all styling — no external component library needed except lucide-react
+- Avatar circles: colored by member index mod 5 using Tailwind color classes (blue, green, yellow, red, purple)
+- Mobile-friendly: the pipeline table and board should be horizontally scrollable on small screens
+- All status badges use icon + label text, never icon alone
+- The detail panel should smoothly scroll into view when opened
+
+---
+
+## FILE STRUCTURE
+
+```
+/app
+  layout.tsx
+  page.tsx                        ← main app shell
+  /api
+    /members/route.ts
+    /members/[id]/route.ts
+    /contents/route.ts
+    /contents/[id]/route.ts
+    /feedback/route.ts
+    /operators/route.ts
+    /pins/route.ts
+/components
+  TopBar.tsx
+  OperatorBanner.tsx
+  CalendarStrip.tsx
+  StatCards.tsx
+  PipelineTab.tsx
+  BoardTab.tsx
+  LeaderboardTab.tsx
+  DetailPanel.tsx
+  AddMemberForm.tsx
+  AddContentForm.tsx
+  StatusBadge.tsx                 ← icon + label, accepts status string
+  Avatar.tsx                      ← colored circle with initials
+  PinModal.tsx                    ← browser identity picker
+/lib
+  db.ts                           ← better-sqlite3 singleton + init
+  weeks.ts                        ← week_key utils
+  types.ts                        ← shared TypeScript interfaces
+/db
+  schema.sql                      ← optional reference copy of schema
+```
+
+---
+
+## STARTING COMMAND
+
+```bash
+npm create next-app@latest traideas-pipeline --typescript --tailwind --app --no-src-dir
+cd traideas-pipeline
+npm install better-sqlite3 lucide-react
+npm install -D @types/better-sqlite3
+npm run dev
+```
+
+The app should be fully functional on `localhost:3000` with zero external services.
+```
+
+---
+
+A few things to note when you run this in Claude Code: it will scaffold everything end to end. If it asks about the database path, tell it to default to `./pipeline.db` in the project root. If it gets stuck on the `better-sqlite3` native build (it needs Node.js native bindings), just run `npm rebuild better-sqlite3` in the project directory. Everything else — the SQLite init, seed data, all API routes, and the full UI — should come out in one pass from this prompt.

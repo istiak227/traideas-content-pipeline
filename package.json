@@ -1,20 +1,27 @@
 {
-  "name": "traideas-pipeline-scaffold",
+  "name": "traideas-content-pipeline",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "init:db": "node scripts/init-db.mjs",
+    "predev": "npm run init:db",
+    "dev": "next dev --webpack --hostname 127.0.0.1 --port 3000",
+    "prebuild": "npm run init:db",
+    "build": "next build --webpack",
+    "prestart": "npm run init:db",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "lucide-react": "^1.7.0",
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
