@@ -365,6 +365,12 @@ export function syncWeek(weekKey: string) {
   const activeIds = new Set(activeMembers.map((member) => member.id));
 
   const transaction = db.transaction(() => {
+    const carriedRowsForActive = latestCarriedContentByMember(
+      weekKey,
+      activeMembers.map((member) => member.id),
+    );
+    const carriedMemberIds = new Set(carriedRowsForActive.map((row) => row.member_id));
+
     const pendingRows = db
       .prepare(
         `SELECT id, member_id
@@ -375,7 +381,7 @@ export function syncWeek(weekKey: string) {
       .all(weekKey) as Array<{ id: string; member_id: string }>;
 
     for (const row of pendingRows) {
-      if (!activeIds.has(row.member_id)) {
+      if (!activeIds.has(row.member_id) || carriedMemberIds.has(row.member_id)) {
         db.prepare("DELETE FROM contents WHERE id = ?").run(row.id);
       }
     }
@@ -394,10 +400,10 @@ export function syncWeek(weekKey: string) {
       weekKey,
       missingMembers.map((member) => member.id),
     );
-    const carriedMemberIds = new Set(carriedRows.map((row) => row.member_id));
+    const missingCarriedMemberIds = new Set(carriedRows.map((row) => row.member_id));
 
     for (const member of missingMembers) {
-      if (!carriedMemberIds.has(member.id)) {
+      if (!missingCarriedMemberIds.has(member.id)) {
         upsertPendingSlot(member.id, weekKey);
       }
     }
@@ -551,7 +557,7 @@ export function updateContent(
     contentId,
   );
 
-  if ((next.status === "scheduled" || next.status === "published") && memberIsContentWriter(existing.member_id)) {
+  if (next.status === "published" && memberIsContentWriter(existing.member_id)) {
     upsertPendingSlot(existing.member_id, addWeeks(existing.week_key, 1));
   }
 

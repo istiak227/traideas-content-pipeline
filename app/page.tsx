@@ -195,9 +195,7 @@ export default function Home() {
         }
 
         if (
-          ["pending_title", "title_submitted", "writing", "content_submitted", "revision"].includes(
-            content.status,
-          )
+          ["title_submitted", "writing", "content_submitted", "revision"].includes(content.status)
         ) {
           inProgress += 1;
         }

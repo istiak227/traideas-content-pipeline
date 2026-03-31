@@ -100,9 +100,13 @@ export const PUBLISHING_MEDIUMS = [
 ] as const;
 
 export const CARRIED_STATUSES: ContentStatus[] = [
+  "pending_title",
+  "title_submitted",
   "writing",
   "content_submitted",
   "revision",
+  "final",
+  "scheduled",
 ];
 
 export const BOARD_COLUMNS: Array<{
