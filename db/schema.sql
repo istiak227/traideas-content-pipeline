@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS team_members (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   initials TEXT NOT NULL,
+  username TEXT DEFAULT '',
   email TEXT DEFAULT '',
   is_content_writer INTEGER DEFAULT 1,
   is_operator_eligible INTEGER DEFAULT 1,
@@ -57,6 +58,26 @@ CREATE TABLE IF NOT EXISTS telegram_link_tokens (
   token TEXT NOT NULL UNIQUE,
   expires_at TEXT NOT NULL,
   used_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+
+CREATE TABLE IF NOT EXISTS member_login_codes (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL,
+  code TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+
+CREATE TABLE IF NOT EXISTS app_sessions (
+  id TEXT PRIMARY KEY,
+  session_token TEXT NOT NULL UNIQUE,
+  member_id TEXT DEFAULT '',
+  role TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (member_id) REFERENCES team_members(id)
 );

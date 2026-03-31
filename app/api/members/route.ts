@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getAuthSessionFromRequest } from "../../../lib/auth";
 import {
   handleRouteError,
   jsonError,
@@ -14,6 +15,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   logRouteHit(request);
   try {
+    if (!getAuthSessionFromRequest(request)) {
+      return jsonError("Unauthorized.", 401);
+    }
+
     const response = NextResponse.json({ members: listMembers() });
     logRouteSuccess(request, 200);
     return response;
@@ -25,6 +30,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   logRouteHit(request);
   try {
+    const session = getAuthSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return jsonError("Admin access required.", 403);
+    }
+
     const body = (await request.json()) as {
       name?: string;
       initials?: string;

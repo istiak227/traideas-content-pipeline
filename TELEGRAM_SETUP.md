@@ -7,6 +7,8 @@ Create a `.env.local` file and set:
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_BOT_USERNAME=your_bot_username_here
+ADMIN_USERNAME=your_admin_username
+ADMIN_PASSWORD=your_admin_password
 ```
 
 ## Create The Bot
@@ -24,6 +26,8 @@ TELEGRAM_BOT_USERNAME=your_bot_username_here
 - `npm run bot` starts the Telegram bot with `telegraf` long polling.
 - You do not need to configure `ngrok`, `cloudflared`, or a Telegram webhook for local development.
 - The existing webhook route remains available as an optional fallback, but polling mode does not need it.
+- Members sign in with their generated username and a one-time Telegram login code.
+- `/member` is protected with admin credentials from `.env.local`.
 
 ## Local Development Notes
 
@@ -58,14 +62,16 @@ npm run bot
 ## Test The Connect Flow
 
 1. Start the web app and bot
-2. Open the main app or `/member`
-3. Pick your identity if needed, then click `Connect Telegram`
+2. Open the main app and enter your username
+3. If Telegram is not connected yet, click the Telegram link and press `Start`
 4. A Telegram deep link opens:
    `https://t.me/<BOT_USERNAME>?start=<TOKEN>`
 5. Press `Start` in Telegram
-6. The bot should reply:
+6. Ask for a login code again from the app
+7. The bot should send a one-time code to Telegram
+8. Enter that code in the app to sign in
+9. When connecting Telegram for the first time, the bot should reply:
    `Your Telegram is now connected to Traideas Content Pipeline.`
-7. Return to the app and press `Refresh`
 
 ## Test Reminder Route Manually
 

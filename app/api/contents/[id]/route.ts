@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getAuthSessionFromRequest } from "../../../../lib/auth";
 import {
   handleRouteError,
   jsonError,
@@ -19,6 +20,10 @@ export async function PATCH(
 ) {
   logRouteHit(request);
   try {
+    if (!getAuthSessionFromRequest(request)) {
+      return jsonError("Unauthorized.", 401);
+    }
+
     const { id } = await params;
     const before = getContentById(id);
     const body = (await request.json()) as Partial<{

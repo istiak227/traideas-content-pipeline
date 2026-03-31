@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 
 import { AddMemberForm } from "../../components/AddMemberForm";
+import { AdminLoginCard } from "../../components/AdminLoginCard";
 import { Avatar } from "../../components/Avatar";
-import { type TeamMember } from "../../lib/types";
+import { type AuthSession, type TeamMember } from "../../lib/types";
 
 async function parseJson<T>(response: Response) {
   if (!response.ok) {
@@ -16,15 +17,30 @@ async function parseJson<T>(response: Response) {
 }
 
 export default function MemberPage() {
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
 
-  async function loadMembers() {
+  async function loadSessionAndMembers() {
     setLoading(true);
     setError("");
+
     try {
+      const sessionResult = await parseJson<{ session: AuthSession | null }>(
+        await fetch("/api/auth/session", { cache: "no-store" }),
+      );
+      setSession(sessionResult.session);
+
+      if (sessionResult.session?.role !== "admin") {
+        setMembers([]);
+        return;
+      }
+
       const result = await parseJson<{ members: TeamMember[] }>(await fetch("/api/members"));
       setMembers(result.members);
     } catch (loadError) {
@@ -35,7 +51,7 @@ export default function MemberPage() {
   }
 
   useEffect(() => {
-    void loadMembers();
+    void loadSessionAndMembers();
   }, []);
 
   async function updateMember(memberId: string, body: Record<string, unknown>) {
@@ -46,7 +62,7 @@ export default function MemberPage() {
         body: JSON.stringify(body),
       }),
     );
-    await loadMembers();
+    await loadSessionAndMembers();
   }
 
   async function removeMember(member: TeamMember) {
@@ -65,35 +81,114 @@ export default function MemberPage() {
       }),
     );
     setStatusMessage(`${member.name} was removed.`);
-    await loadMembers();
+    await loadSessionAndMembers();
+  }
+
+  async function loginAsAdmin() {
+    setAdminLoading(true);
+    setError("");
+
+    try {
+      await parseJson(
+        await fetch("/api/auth/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: adminUsername,
+            password: adminPassword,
+          }),
+        }),
+      );
+      setAdminPassword("");
+      await loadSessionAndMembers();
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Unable to sign in.");
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  async function logout() {
+    await parseJson(
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      }),
+    );
+    setSession(null);
+    setMembers([]);
+    setAdminPassword("");
+    setStatusMessage("");
+    await loadSessionAndMembers();
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef3f8_100%)]">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+          <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-16 text-center text-sm font-medium text-slate-500">
+            Loading member management...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (session?.role !== "admin") {
+    return (
+      <main className="min-h-screen bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef3f8_100%)]">
+        <div className="mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8 sm:px-6 lg:px-8">
+          <AdminLoginCard
+            error={error}
+            loading={adminLoading}
+            onPasswordChange={setAdminPassword}
+            onSubmit={loginAsAdmin}
+            onUsernameChange={setAdminUsername}
+            password={adminPassword}
+            username={adminUsername}
+          />
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef3f8_100%)]">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         <div className="rounded-[28px] border border-white/70 bg-white/85 p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-700">
-            Members
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
-            Member settings
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Toggle who appears in the writing pipeline, who can be in the operator pool, and who is connected to Telegram.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-700">
+                Members
+              </p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+                Member settings
+              </h1>
+              <p className="mt-2 text-sm text-slate-600">
+                Admin-only member management. Usernames are generated automatically and used for Telegram OTP login.
+              </p>
+            </div>
+            <button
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              onClick={() => void logout()}
+              type="button"
+            >
+              Log out
+            </button>
+          </div>
         </div>
 
         <AddMemberForm
           onClose={() => undefined}
           onSubmit={async ({ name, initials }) => {
-            await parseJson<{ member: TeamMember }>(
+            const result = await parseJson<{ member: TeamMember }>(
               await fetch("/api/members", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name, initials }),
               }),
             );
-            await loadMembers();
+            setStatusMessage(`Created ${result.member.name} with username @${result.member.username}.`);
+            await loadSessionAndMembers();
           }}
         />
 
@@ -109,180 +204,177 @@ export default function MemberPage() {
           </div>
         ) : null}
 
-        {loading ? (
-          <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-16 text-center text-sm font-medium text-slate-500">
-            Loading members...
-          </div>
-        ) : null}
-
-        {!loading ? (
-          <div className="overflow-x-auto rounded-[24px] border border-slate-200 bg-white">
-            <table className="w-full min-w-[1280px]">
-              <thead className="border-b border-slate-200 bg-slate-50/80">
-                <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  <th className="px-5 py-4">Member</th>
-                  <th className="px-5 py-4">Email</th>
-                  <th className="px-5 py-4">Pipeline writer</th>
-                  <th className="px-5 py-4">Operator pool</th>
-                  <th className="px-5 py-4">Telegram</th>
-                  <th className="px-5 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((member, index) => (
-                  <tr key={member.id} className="border-b border-slate-100 last:border-b-0">
-                    <td className="px-5 py-5">
-                      <div className="flex items-center gap-3">
-                        <Avatar initials={member.initials} index={index} size="sm" />
-                        <div>
-                          <p className="font-semibold text-slate-900">{member.name}</p>
-                          <p className="text-sm text-slate-500">{member.initials}</p>
-                        </div>
+        <div className="overflow-x-auto rounded-[24px] border border-slate-200 bg-white">
+          <table className="w-full min-w-[1360px]">
+            <thead className="border-b border-slate-200 bg-slate-50/80">
+              <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                <th className="px-5 py-4">Member</th>
+                <th className="px-5 py-4">Username</th>
+                <th className="px-5 py-4">Email</th>
+                <th className="px-5 py-4">Pipeline writer</th>
+                <th className="px-5 py-4">Operator pool</th>
+                <th className="px-5 py-4">Telegram</th>
+                <th className="px-5 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member, index) => (
+                <tr key={member.id} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-5 py-5">
+                    <div className="flex items-center gap-3">
+                      <Avatar initials={member.initials} index={index} size="sm" />
+                      <div>
+                        <p className="font-semibold text-slate-900">{member.name}</p>
+                        <p className="text-sm text-slate-500">{member.initials}</p>
                       </div>
-                    </td>
-                    <td className="px-5 py-5">
-                      <input
-                        className="w-full min-w-52 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none transition focus:border-cyan-400"
-                        defaultValue={member.email}
-                        placeholder="member@example.com"
-                        onBlur={async (event) => {
-                          const nextEmail = event.target.value.trim();
-                          if (nextEmail === member.email) {
-                            return;
-                          }
-                          await updateMember(member.id, { email: nextEmail });
-                          setStatusMessage("Member email updated.");
-                        }}
-                      />
-                    </td>
-                    <td className="px-5 py-5">
-                      <button
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          member.is_content_writer === 1
-                            ? "bg-green-100 text-green-800"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                        onClick={async () => {
-                          await updateMember(member.id, {
-                            is_content_writer: member.is_content_writer === 1 ? 0 : 1,
-                          });
-                        }}
-                        type="button"
-                      >
-                        {member.is_content_writer === 1 ? "On" : "Off"}
-                      </button>
-                    </td>
-                    <td className="px-5 py-5">
-                      <button
-                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                          member.is_operator_eligible === 1
-                            ? "bg-cyan-100 text-cyan-800"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                        onClick={async () => {
-                          await updateMember(member.id, {
-                            is_operator_eligible:
-                              member.is_operator_eligible === 1 ? 0 : 1,
-                          });
-                        }}
-                        type="button"
-                      >
-                        {member.is_operator_eligible === 1 ? "On" : "Off"}
-                      </button>
-                    </td>
-                    <td className="px-5 py-5">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                              member.telegram_chat_id
-                                ? "bg-green-100 text-green-800"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {member.telegram_chat_id ? "Connected" : "Not connected"}
+                    </div>
+                  </td>
+                  <td className="px-5 py-5">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+                      @{member.username}
+                    </span>
+                  </td>
+                  <td className="px-5 py-5">
+                    <input
+                      className="w-full min-w-52 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none transition focus:border-cyan-400"
+                      defaultValue={member.email}
+                      placeholder="member@example.com"
+                      onBlur={async (event) => {
+                        const nextEmail = event.target.value.trim();
+                        if (nextEmail === member.email) {
+                          return;
+                        }
+                        await updateMember(member.id, { email: nextEmail });
+                        setStatusMessage("Member email updated.");
+                      }}
+                    />
+                  </td>
+                  <td className="px-5 py-5">
+                    <button
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        member.is_content_writer === 1
+                          ? "bg-green-100 text-green-800"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                      onClick={async () => {
+                        await updateMember(member.id, {
+                          is_content_writer: member.is_content_writer === 1 ? 0 : 1,
+                        });
+                      }}
+                      type="button"
+                    >
+                      {member.is_content_writer === 1 ? "On" : "Off"}
+                    </button>
+                  </td>
+                  <td className="px-5 py-5">
+                    <button
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        member.is_operator_eligible === 1
+                          ? "bg-cyan-100 text-cyan-800"
+                          : "bg-slate-100 text-slate-600"
+                      }`}
+                      onClick={async () => {
+                        await updateMember(member.id, {
+                          is_operator_eligible: member.is_operator_eligible === 1 ? 0 : 1,
+                        });
+                      }}
+                      type="button"
+                    >
+                      {member.is_operator_eligible === 1 ? "On" : "Off"}
+                    </button>
+                  </td>
+                  <td className="px-5 py-5">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            member.telegram_chat_id
+                              ? "bg-green-100 text-green-800"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {member.telegram_chat_id ? "Connected" : "Not connected"}
+                        </span>
+                        {member.telegram_username ? (
+                          <span className="text-sm font-medium text-slate-600">
+                            @{member.telegram_username}
                           </span>
-                          {member.telegram_username ? (
-                            <span className="text-sm font-medium text-slate-600">
-                              @{member.telegram_username}
-                            </span>
-                          ) : null}
-                        </div>
-                        {member.telegram_connected_at ? (
-                          <p className="text-xs text-slate-500">
-                            Connected {member.telegram_connected_at}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-amber-700">
-                            Telegram not connected yet.
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="rounded-full border border-cyan-200 px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50"
-                            onClick={async () => {
-                              const result = await parseJson<{
-                                deep_link: string;
-                                expires_at: string;
-                              }>(
-                                await fetch("/api/telegram/connect-link", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ member_id: member.id }),
-                                }),
-                              );
-                              window.open(result.deep_link, "_blank", "noopener,noreferrer");
-                              setStatusMessage(
-                                `Open Telegram, press Start, then come back here. Link expires at ${result.expires_at}.`,
-                              );
-                            }}
-                            type="button"
-                          >
-                            {member.telegram_chat_id ? "Reconnect Telegram" : "Connect Telegram"}
-                          </button>
-                          <button
-                            className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                            onClick={async () => {
-                              await parseJson(
-                                await fetch("/api/telegram/test", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ member_id: member.id }),
-                                }),
-                              );
-                              setStatusMessage("Test message request sent.");
-                            }}
-                            type="button"
-                          >
-                            Send test message
-                          </button>
-                          <button
-                            className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                            onClick={() => void loadMembers()}
-                            type="button"
-                          >
-                            Refresh status
-                          </button>
-                        </div>
+                        ) : null}
                       </div>
-                    </td>
-                    <td className="px-5 py-5">
-                      <div className="flex justify-end">
+                      {member.telegram_connected_at ? (
+                        <p className="text-xs text-slate-500">
+                          Connected {member.telegram_connected_at}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-amber-700">
+                          Telegram not connected yet.
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
                         <button
-                          className="rounded-full border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
-                          onClick={() => void removeMember(member)}
+                          className="rounded-full border border-cyan-200 px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50"
+                          onClick={async () => {
+                            const result = await parseJson<{
+                              deep_link: string;
+                              expires_at: string;
+                            }>(
+                              await fetch("/api/telegram/connect-link", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ member_id: member.id }),
+                              }),
+                            );
+                            window.open(result.deep_link, "_blank", "noopener,noreferrer");
+                            setStatusMessage(
+                              `Open Telegram, press Start, then come back here. Link expires at ${result.expires_at}.`,
+                            );
+                          }}
                           type="button"
                         >
-                          Remove member
+                          {member.telegram_chat_id ? "Reconnect Telegram" : "Connect Telegram"}
+                        </button>
+                        <button
+                          className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          onClick={async () => {
+                            await parseJson(
+                              await fetch("/api/telegram/test", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ member_id: member.id }),
+                              }),
+                            );
+                            setStatusMessage("Test message request sent.");
+                          }}
+                          type="button"
+                        >
+                          Send test message
+                        </button>
+                        <button
+                          className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          onClick={() => void loadSessionAndMembers()}
+                          type="button"
+                        >
+                          Refresh status
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+                    </div>
+                  </td>
+                  <td className="px-5 py-5">
+                    <div className="flex justify-end">
+                      <button
+                        className="rounded-full border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                        onClick={() => void removeMember(member)}
+                        type="button"
+                      >
+                        Remove member
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </main>
   );

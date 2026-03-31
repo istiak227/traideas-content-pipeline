@@ -1,10 +1,10 @@
 import {
   ChevronLeft,
   ChevronRight,
+  LogOut,
   MessageCircleMore,
   Plus,
   RefreshCw,
-  UserRoundPen,
 } from "lucide-react";
 
 import { Avatar } from "./Avatar";
@@ -13,26 +13,26 @@ import { type TeamMember } from "../lib/types";
 
 export function TopBar({
   weekKey,
-  pinnedMember,
-  pinnedIndex,
+  currentMember,
+  currentMemberIndex,
   onPrevWeek,
   onNextWeek,
-  onOpenPin,
   onOpenContentForm,
   onSync,
   onConnectTelegram,
-  onRefreshPinnedMember,
+  onRefreshCurrentMember,
+  onLogout,
 }: {
   weekKey: string;
-  pinnedMember: TeamMember | null;
-  pinnedIndex: number;
+  currentMember: TeamMember;
+  currentMemberIndex: number;
   onPrevWeek: () => void;
   onNextWeek: () => void;
-  onOpenPin: () => void;
   onOpenContentForm: () => void;
   onSync: () => void;
   onConnectTelegram: () => void;
-  onRefreshPinnedMember: () => void;
+  onRefreshCurrentMember: () => void;
+  onLogout: () => void;
 }) {
   return (
     <div className="rounded-[28px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
@@ -68,60 +68,53 @@ export function TopBar({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {pinnedMember ? (
-              <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-3 py-2">
-                <Avatar initials={pinnedMember.initials} index={pinnedIndex} size="sm" />
-                <div>
-                  <p className="text-xs text-slate-500">Pinned identity</p>
-                  <p className="text-sm font-semibold text-slate-800">{pinnedMember.name}</p>
-                  <p className="text-xs text-slate-500">
-                    Telegram:{" "}
-                    <span
-                      className={
-                        pinnedMember.telegram_chat_id ? "font-semibold text-green-700" : "font-semibold text-amber-700"
-                      }
-                    >
-                      {pinnedMember.telegram_chat_id
-                        ? pinnedMember.telegram_username
-                          ? `Connected as @${pinnedMember.telegram_username}`
-                          : "Connected"
-                        : "Not connected"}
-                    </span>
-                  </p>
-                </div>
-                <button
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 transition hover:bg-white"
-                  onClick={onOpenPin}
-                  type="button"
-                >
-                  Change
-                </button>
-                <button
-                  className="inline-flex items-center gap-2 rounded-full border border-cyan-200 px-3 py-1 text-sm font-medium text-cyan-800 transition hover:bg-cyan-50"
-                  onClick={onConnectTelegram}
-                  type="button"
-                >
-                  <MessageCircleMore className="h-4 w-4" />
-                  {pinnedMember.telegram_chat_id ? "Reconnect Telegram" : "Connect Telegram"}
-                </button>
-                <button
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 transition hover:bg-white"
-                  onClick={onRefreshPinnedMember}
-                  type="button"
-                >
-                  Refresh
-                </button>
+            <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-slate-200 bg-slate-50 px-3 py-2">
+              <Avatar initials={currentMember.initials} index={currentMemberIndex} size="sm" />
+              <div>
+                <p className="text-xs text-slate-500">Signed in as</p>
+                <p className="text-sm font-semibold text-slate-800">{currentMember.name}</p>
+                <p className="text-xs text-slate-500">@{currentMember.username}</p>
+                <p className="text-xs text-slate-500">
+                  Telegram:{" "}
+                  <span
+                    className={
+                      currentMember.telegram_chat_id
+                        ? "font-semibold text-green-700"
+                        : "font-semibold text-amber-700"
+                    }
+                  >
+                    {currentMember.telegram_chat_id
+                      ? currentMember.telegram_username
+                        ? `Connected as @${currentMember.telegram_username}`
+                        : "Connected"
+                      : "Not connected"}
+                  </span>
+                </p>
               </div>
-            ) : (
               <button
-                className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-100"
-                onClick={onOpenPin}
+                className="inline-flex items-center gap-2 rounded-full border border-cyan-200 px-3 py-1 text-sm font-medium text-cyan-800 transition hover:bg-cyan-50"
+                onClick={onConnectTelegram}
                 type="button"
               >
-                <UserRoundPen className="h-4 w-4" />
-                Set your identity
+                <MessageCircleMore className="h-4 w-4" />
+                {currentMember.telegram_chat_id ? "Reconnect Telegram" : "Connect Telegram"}
               </button>
-            )}
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 transition hover:bg-white"
+                onClick={onRefreshCurrentMember}
+                type="button"
+              >
+                Refresh
+              </button>
+              <button
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 transition hover:bg-white"
+                onClick={onLogout}
+                type="button"
+              >
+                <LogOut className="h-4 w-4" />
+                Log out
+              </button>
+            </div>
 
             <button
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-cyan-200 hover:bg-cyan-50"

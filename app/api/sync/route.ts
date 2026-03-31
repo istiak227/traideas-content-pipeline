@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getAuthSessionFromRequest } from "../../../lib/auth";
 import {
   handleRouteError,
   jsonError,
@@ -14,6 +15,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   logRouteHit(request);
   try {
+    if (!getAuthSessionFromRequest(request)) {
+      return jsonError("Unauthorized.", 401);
+    }
+
     const body = (await request.json()) as {
       week_key?: string;
     };
