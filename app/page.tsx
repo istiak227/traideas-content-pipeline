@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import { AddContentForm } from "../components/AddContentForm";
-import { AddMemberForm } from "../components/AddMemberForm";
 import { BoardTab } from "../components/BoardTab";
 import { CalendarStrip } from "../components/CalendarStrip";
 import { DetailPanel } from "../components/DetailPanel";
 import { LeaderboardTab } from "../components/LeaderboardTab";
+import { MemberLoginCard } from "../components/MemberLoginCard";
+import { MemberSummaryCard } from "../components/MemberSummaryCard";
 import { OperatorBanner } from "../components/OperatorBanner";
-import { PinModal } from "../components/PinModal";
 import { PipelineTab } from "../components/PipelineTab";
 import { PublishedTab } from "../components/PublishedTab";
 import { StatCards } from "../components/StatCards";
@@ -17,6 +17,7 @@ import { TopBar } from "../components/TopBar";
 import { addWeeks, getCurrentWeekKey } from "../lib/weeks";
 import {
   CONTENT_TYPES,
+  type AuthSession,
   type ContentItem,
   type ContentStatus,
   type LeaderboardRow,
@@ -30,6 +31,19 @@ type OperatorResponse = {
     member: TeamMember | null;
   } | null;
 };
+
+type MemberLoginResponse =
+  | {
+      step: "connect_telegram";
+      deep_link: string;
+      expires_at: string;
+      member: { id: string; name: string; username: string };
+    }
+  | {
+      step: "enter_code";
+      expires_at: string;
+      member: { id: string; name: string; username: string };
+    };
 
 async function parseJson<T>(response: Response) {
   if (!response.ok) {
@@ -48,38 +62,26 @@ export default function Home() {
   const [contents, setContents] = useState<ContentItem[]>([]);
   const [allContents, setAllContents] = useState<ContentItem[]>([]);
   const [operator, setOperator] = useState<TeamMember | null>(null);
-  const [pinnedMember, setPinnedMember] = useState<TeamMember | null>(null);
-  const [browserKey, setBrowserKey] = useState("");
-  const [tab, setTab] = useState<
-    "pipeline" | "board" | "published" | "leaderboard"
-  >("pipeline");
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [tab, setTab] = useState<"pipeline" | "board" | "published" | "leaderboard">("pipeline");
   const [selectedContentId, setSelectedContentId] = useState<string | null>(null);
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [showAddMember, setShowAddMember] = useState(false);
   const [showAddContent, setShowAddContent] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginCode, setLoginCode] = useState("");
+  const [loginStep, setLoginStep] = useState<"username" | "connect_telegram" | "enter_code">(
+    "username",
+  );
+  const [loginDeepLink, setLoginDeepLink] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [loginStatusMessage, setLoginStatusMessage] = useState("");
   const detailRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("tcp_browser_key");
-    if (stored) {
-      setBrowserKey(stored);
-      return;
-    }
-
-    const next = crypto.randomUUID();
-    window.localStorage.setItem("tcp_browser_key", next);
-    setBrowserKey(next);
-  }, []);
-
-  useEffect(() => {
-    if (!browserKey) {
-      return;
-    }
-
     let cancelled = false;
 
     async function load() {
@@ -87,16 +89,31 @@ export default function Home() {
       setError("");
 
       try {
-        const [membersJson, weekContentsJson, allContentsJson, pinJson, operatorJson] =
+        const sessionJson = await parseJson<{ session: AuthSession | null }>(
+          await fetch("/api/auth/session", { cache: "no-store" }),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        setSession(sessionJson.session);
+
+        if (!sessionJson.session || sessionJson.session.role !== "member" || !sessionJson.session.member) {
+          setMembers([]);
+          setContents([]);
+          setAllContents([]);
+          setOperator(null);
+          return;
+        }
+
+        const [membersJson, weekContentsJson, allContentsJson, operatorJson] =
           await Promise.all([
             parseJson<{ members: TeamMember[] }>(await fetch("/api/members")),
             parseJson<{ contents: ContentItem[] }>(
               await fetch(`/api/contents?week_key=${encodeURIComponent(weekKey)}`),
             ),
             parseJson<{ contents: ContentItem[] }>(await fetch("/api/contents")),
-            parseJson<{ pin: { member: TeamMember } | null }>(
-              await fetch(`/api/pins?browser_key=${encodeURIComponent(browserKey)}`),
-            ),
             parseJson<OperatorResponse>(
               await fetch(`/api/operators?week_key=${encodeURIComponent(weekKey)}`),
             ),
@@ -109,7 +126,6 @@ export default function Home() {
         setMembers(membersJson.members);
         setContents(weekContentsJson.contents);
         setAllContents(allContentsJson.contents);
-        setPinnedMember(pinJson.pin?.member ?? null);
         setOperator(operatorJson.operator?.member ?? null);
       } catch (loadError) {
         if (!cancelled) {
@@ -127,7 +143,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [browserKey, refreshTick, weekKey]);
+  }, [refreshTick, weekKey]);
 
   useEffect(() => {
     if (!selectedContentId) {
@@ -148,6 +164,7 @@ export default function Home() {
     detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedContentId]);
 
+  const currentMember = session?.role === "member" ? session.member : null;
   const membersById = Object.fromEntries(members.map((member) => [member.id, member]));
   const memberIndexes = Object.fromEntries(members.map((member, index) => [member.id, index]));
   const contentWriters = members.filter((member) => member.is_content_writer === 1);
@@ -161,6 +178,15 @@ export default function Home() {
     .filter((content) => content.status === "published")
     .sort((a, b) => (b.publish_date || b.updated_at).localeCompare(a.publish_date || a.updated_at));
   const selectedContent = allContents.find((content) => content.id === selectedContentId) ?? null;
+  const currentMemberContent = currentMember
+    ? (contentByMember[currentMember.id] ?? []).sort((a, b) => {
+        if (a.carried !== b.carried) {
+          return b.carried - a.carried;
+        }
+
+        return a.created_at.localeCompare(b.created_at);
+      })[0] ?? null
+    : null;
 
   const stats = {
     awaitingReview: weekPipelineContents.filter((content) => content.status === "content_submitted").length,
@@ -224,9 +250,91 @@ export default function Home() {
     setRefreshTick((current) => current + 1);
   }
 
-  async function connectPinnedMemberTelegram() {
-    if (!pinnedMember) {
-      setError("Set your identity first, then connect Telegram.");
+  async function requestMemberLoginCode() {
+    setLoginLoading(true);
+    setLoginError("");
+    setLoginStatusMessage("");
+
+    try {
+      const result = await parseJson<MemberLoginResponse>(
+        await fetch("/api/auth/member/request-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: loginUsername.trim() }),
+        }),
+      );
+
+      if (result.step === "connect_telegram") {
+        setLoginStep("connect_telegram");
+        setLoginDeepLink(result.deep_link);
+        setLoginStatusMessage(
+          `Connect Telegram for @${result.member.username}. This link expires at ${result.expires_at}.`,
+        );
+        return;
+      }
+
+      setLoginStep("enter_code");
+      setLoginDeepLink("");
+      setLoginStatusMessage(
+        `A one-time login code was sent to Telegram for @${result.member.username}.`,
+      );
+    } catch (requestError) {
+      setLoginError(requestError instanceof Error ? requestError.message : "Unable to continue login.");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function verifyMemberLoginCode() {
+    setLoginLoading(true);
+    setLoginError("");
+    setLoginStatusMessage("");
+
+    try {
+      await parseJson(
+        await fetch("/api/auth/member/verify-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: loginUsername.trim(),
+            code: loginCode.trim(),
+          }),
+        }),
+      );
+
+      setLoginCode("");
+      setLoginStep("username");
+      await refresh();
+    } catch (verifyError) {
+      setLoginError(verifyError instanceof Error ? verifyError.message : "Unable to verify code.");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function logout() {
+    await parseJson(
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      }),
+    );
+    setSession(null);
+    setMembers([]);
+    setContents([]);
+    setAllContents([]);
+    setOperator(null);
+    setSelectedContentId(null);
+    setShowAddContent(false);
+    setLoginCode("");
+    setLoginStep("username");
+    setStatusMessage("");
+    setError("");
+    await refresh();
+  }
+
+  async function connectCurrentMemberTelegram() {
+    if (!currentMember) {
+      setError("Sign in first, then connect Telegram.");
       return;
     }
 
@@ -234,7 +342,7 @@ export default function Home() {
       await fetch("/api/telegram/connect-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ member_id: pinnedMember.id }),
+        body: JSON.stringify({ member_id: currentMember.id }),
       }),
     );
 
@@ -301,62 +409,68 @@ export default function Home() {
     await refresh();
   }
 
+  if (loading && !currentMember) {
+    return (
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.2),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(251,191,36,0.18),_transparent_28%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_52%,_#eef3f8_100%)]">
+        <div className="mx-auto flex min-h-screen w-full max-w-[1440px] items-center px-4 py-6 sm:px-6 lg:px-8">
+          <div className="w-full rounded-[24px] border border-slate-200 bg-white px-5 py-16 text-center text-sm font-medium text-slate-500">
+            Loading Traideas Content Pipeline...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentMember) {
+    return (
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.2),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(251,191,36,0.18),_transparent_28%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_52%,_#eef3f8_100%)]">
+        <div className="mx-auto flex min-h-screen w-full max-w-[1440px] items-center px-4 py-6 sm:px-6 lg:px-8">
+          <MemberLoginCard
+            code={loginCode}
+            deepLink={loginDeepLink}
+            error={loginError}
+            loading={loginLoading}
+            onCodeChange={setLoginCode}
+            onRequestCode={requestMemberLoginCode}
+            onUsernameChange={setLoginUsername}
+            onVerifyCode={verifyMemberLoginCode}
+            statusMessage={loginStatusMessage}
+            step={loginStep}
+            username={loginUsername}
+          />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.2),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(251,191,36,0.18),_transparent_28%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_52%,_#eef3f8_100%)]">
-      <PinModal
-        members={members}
-        memberIndexes={memberIndexes}
-        open={showPinModal}
-        onClose={() => setShowPinModal(false)}
-        onSelect={async (memberId) => {
-          await parseJson<{ pin: { member: TeamMember } }>(
-            await fetch("/api/pins", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ browser_key: browserKey, member_id: memberId }),
-            }),
-          );
-          await refresh();
-        }}
-      />
-
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <TopBar
           weekKey={weekKey}
-          pinnedMember={pinnedMember}
-          pinnedIndex={pinnedMember ? memberIndexes[pinnedMember.id] ?? 0 : 0}
+          currentMember={currentMember}
+          currentMemberIndex={memberIndexes[currentMember.id] ?? 0}
           onPrevWeek={() => setWeekKey((current) => addWeeks(current, -1))}
           onNextWeek={() => setWeekKey((current) => addWeeks(current, 1))}
-          onOpenPin={() => setShowPinModal(true)}
-          onOpenMemberForm={() => {
-            setShowAddMember((current) => !current);
-            setShowAddContent(false);
-          }}
-          onOpenContentForm={() => {
-            setShowAddContent((current) => !current);
-            setShowAddMember(false);
-          }}
+          onOpenContentForm={() => setShowAddContent((current) => !current)}
           onSync={() => void syncCurrentWeek()}
-          onConnectTelegram={() => void connectPinnedMemberTelegram()}
-          onRefreshPinnedMember={() => void refresh()}
+          onConnectTelegram={() => void connectCurrentMemberTelegram()}
+          onRefreshCurrentMember={() => void refresh()}
+          onLogout={() => void logout()}
         />
 
-        {showAddMember ? (
-          <AddMemberForm
-            onClose={() => setShowAddMember(false)}
-            onSubmit={async ({ name, initials }) => {
-              await parseJson<{ member: TeamMember }>(
-                await fetch("/api/members", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name, initials }),
-                }),
-              );
-              setShowAddMember(false);
-              await refresh();
-            }}
-          />
-        ) : null}
+        <MemberSummaryCard
+          member={currentMember}
+          content={currentMemberContent}
+          onOpenContent={(content) => setSelectedContentId(content.id)}
+        />
+
+        <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-900">
+          <p className="font-semibold">How weekly carry-forward works</p>
+          <p className="mt-1">
+            Writers keep one active content item at a time. If it is still in progress, under review, or waiting on changes, it continues into the next week and shows as continuing work instead of creating a new assignment.
+          </p>
+        </div>
 
         {showAddContent ? (
           <AddContentForm
@@ -440,7 +554,7 @@ export default function Home() {
             contentByMember={contentByMember}
             onSelectContent={(content) => setSelectedContentId(content.id)}
             onQuickAdd={(memberId) => void handleQuickAdd(memberId)}
-            pinnedMemberId={pinnedMember?.id ?? null}
+            pinnedMemberId={currentMember.id}
           />
         ) : null}
 
@@ -450,7 +564,7 @@ export default function Home() {
             membersById={membersById}
             memberIndexes={memberIndexes}
             onSelectContent={(content) => setSelectedContentId(content.id)}
-            pinnedMemberId={pinnedMember?.id ?? null}
+            pinnedMemberId={currentMember.id}
           />
         ) : null}
 
@@ -459,7 +573,7 @@ export default function Home() {
             contents={publishedContents}
             membersById={membersById}
             memberIndexes={memberIndexes}
-            pinnedMemberId={pinnedMember?.id ?? null}
+            pinnedMemberId={currentMember.id}
             onSelectContent={(content) => setSelectedContentId(content.id)}
           />
         ) : null}
@@ -478,7 +592,7 @@ export default function Home() {
               content={selectedContent}
               member={membersById[selectedContent.member_id] ?? null}
               memberIndex={memberIndexes[selectedContent.member_id] ?? 0}
-              pinnedMember={pinnedMember}
+              pinnedMember={currentMember}
               onClose={() => setSelectedContentId(null)}
               onSave={async (values) => {
                 await patchContent(selectedContent.id, values);

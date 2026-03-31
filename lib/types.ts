@@ -23,6 +23,7 @@ export interface TeamMember {
   id: string;
   name: string;
   initials: string;
+  username: string;
   email: string;
   is_content_writer: number;
   is_operator_eligible: number;
@@ -83,6 +84,31 @@ export interface TelegramLinkToken {
   expires_at: string;
   used_at: string;
   created_at: string;
+}
+
+export interface MemberLoginCode {
+  id: string;
+  member_id: string;
+  code: string;
+  expires_at: string;
+  used_at: string;
+  created_at: string;
+}
+
+export type AppSessionRole = "member" | "admin";
+
+export interface AppSession {
+  id: string;
+  session_token: string;
+  member_id: string;
+  role: AppSessionRole;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface AuthSession {
+  role: AppSessionRole;
+  member: TeamMember | null;
 }
 
 export interface NotificationLog {
@@ -148,12 +174,12 @@ export const BOARD_COLUMNS: Array<{
 ];
 
 export const STATUS_LABELS: Record<ContentStatus, string> = {
-  pending_title: "Pending title",
-  title_submitted: "Title submitted",
+  pending_title: "Title needed",
+  title_submitted: "Title ready",
   writing: "Writing",
   content_submitted: "Under review",
-  revision: "Revision",
-  final: "Final",
+  revision: "Changes requested",
+  final: "Approved",
   scheduled: "Scheduled",
   published: "Published",
 };

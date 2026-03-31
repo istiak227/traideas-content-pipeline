@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getAuthSessionFromRequest } from "../../../../lib/auth";
 import {
   handleRouteError,
   jsonError,
@@ -17,10 +18,16 @@ export async function PATCH(
 ) {
   logRouteHit(request);
   try {
+    const session = getAuthSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return jsonError("Admin access required.", 403);
+    }
+
     const { id } = await params;
     const body = (await request.json()) as Partial<{
       name: string;
       initials: string;
+      email: string;
       is_content_writer: number;
       is_operator_eligible: number;
     }>;
@@ -45,6 +52,11 @@ export async function DELETE(
 ) {
   logRouteHit(_request);
   try {
+    const session = getAuthSessionFromRequest(_request);
+    if (!session || session.role !== "admin") {
+      return jsonError("Admin access required.", 403);
+    }
+
     const { id } = await params;
     deleteMember(id);
     const response = NextResponse.json({ success: true });

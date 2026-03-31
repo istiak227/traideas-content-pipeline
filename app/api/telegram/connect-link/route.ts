@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getAuthSessionFromRequest } from "../../../../lib/auth";
 import {
   handleRouteError,
   jsonError,
@@ -15,15 +16,23 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   logRouteHit(request);
   try {
+    const session = getAuthSessionFromRequest(request);
+    if (!session) {
+      return jsonError("Unauthorized.", 401);
+    }
+
     const body = (await request.json()) as {
       member_id?: string;
     };
 
-    if (!body.member_id) {
+    const memberId =
+      session.role === "admin" ? body.member_id : session.member?.id;
+
+    if (!memberId) {
       return jsonError("member_id is required.", 400);
     }
 
-    const member = getMemberById(body.member_id);
+    const member = getMemberById(memberId);
     if (!member) {
       return jsonError("Member not found.", 404);
     }
@@ -33,7 +42,7 @@ export async function POST(request: Request) {
       return jsonError("TELEGRAM_BOT_USERNAME is not configured.", 500);
     }
 
-    const tokenRow = createTelegramLinkToken(body.member_id, 15);
+    const tokenRow = createTelegramLinkToken(memberId, 15);
     const deepLink = `https://t.me/${botUsername}?start=${tokenRow.token}`;
 
     const response = NextResponse.json({

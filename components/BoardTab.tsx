@@ -1,3 +1,5 @@
+import { Sparkles } from "lucide-react";
+
 import { Avatar } from "./Avatar";
 import { BOARD_COLUMNS, CONTENT_TYPES, type ContentItem, type TeamMember } from "../lib/types";
 
@@ -51,6 +53,12 @@ export function BoardTab({
                       onClick={() => onSelectContent(content)}
                       type="button"
                     >
+                      {isPinned ? (
+                        <span className="mb-3 inline-flex items-center gap-1 rounded-full bg-cyan-600 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white">
+                          <Sparkles className="h-3 w-3" />
+                          Your content
+                        </span>
+                      ) : null}
                       <p className="font-semibold text-slate-900">
                         {content.title || <span className="italic text-slate-400">no title</span>}
                       </p>
@@ -65,7 +73,6 @@ export function BoardTab({
                         <div>
                           <p className="text-sm font-medium text-slate-700">
                             {member?.name.split(" ")[0] ?? "Unknown"}
-                            {isPinned ? " • You" : ""}
                           </p>
                           {content.type ? (
                             <p className="text-xs text-slate-500">{typeLabel(content.type)}</p>
