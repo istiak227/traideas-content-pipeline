@@ -8,6 +8,7 @@ import { BoardTab } from "../components/BoardTab";
 import { CalendarStrip } from "../components/CalendarStrip";
 import { DetailPanel } from "../components/DetailPanel";
 import { LeaderboardTab } from "../components/LeaderboardTab";
+import { MemberSummaryCard } from "../components/MemberSummaryCard";
 import { OperatorBanner } from "../components/OperatorBanner";
 import { PinModal } from "../components/PinModal";
 import { PipelineTab } from "../components/PipelineTab";
@@ -161,6 +162,15 @@ export default function Home() {
     .filter((content) => content.status === "published")
     .sort((a, b) => (b.publish_date || b.updated_at).localeCompare(a.publish_date || a.updated_at));
   const selectedContent = allContents.find((content) => content.id === selectedContentId) ?? null;
+  const pinnedMemberCurrentContent = pinnedMember
+    ? (contentByMember[pinnedMember.id] ?? []).sort((a, b) => {
+        if (a.carried !== b.carried) {
+          return b.carried - a.carried;
+        }
+
+        return a.created_at.localeCompare(b.created_at);
+      })[0] ?? null
+    : null;
 
   const stats = {
     awaitingReview: weekPipelineContents.filter((content) => content.status === "content_submitted").length,
@@ -336,6 +346,19 @@ export default function Home() {
           onConnectTelegram={() => void connectPinnedMemberTelegram()}
           onRefreshPinnedMember={() => void refresh()}
         />
+
+        <MemberSummaryCard
+          member={pinnedMember}
+          content={pinnedMemberCurrentContent}
+          onOpenContent={(content) => setSelectedContentId(content.id)}
+        />
+
+        <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 px-5 py-4 text-sm text-amber-900">
+          <p className="font-semibold">How weekly carry-forward works</p>
+          <p className="mt-1">
+            Writers keep one active content item at a time. If it is still in progress, under review, or waiting on changes, it continues into the next week and shows as continuing work instead of creating a new assignment.
+          </p>
+        </div>
 
         {showAddMember ? (
           <AddMemberForm

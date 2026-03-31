@@ -75,10 +75,24 @@ export function PipelineTab({
                   {items.length > 0 ? (
                     <div className="space-y-4">
                       {items.map((content) => (
-                        <div key={content.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div
+                          key={content.id}
+                          className={`rounded-2xl border p-4 ${
+                            isPinned
+                              ? "border-cyan-200 bg-white shadow-[0_18px_40px_-28px_rgba(8,145,178,0.9)]"
+                              : "border-slate-200"
+                          }`}
+                        >
                           {content.carried ? (
                             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">
-                              Carried from {formatDateLabel(content.carried_from_week_key ?? content.week_key)}
+                              Continuing from{" "}
+                              {formatDateLabel(content.carried_from_week_key ?? content.week_key)}
+                            </p>
+                          ) : null}
+                          {isPinned ? (
+                            <p className="mb-2 inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-700">
+                              <Sparkles className="h-3 w-3" />
+                              Your content
                             </p>
                           ) : null}
                           <p className="font-semibold text-slate-900">

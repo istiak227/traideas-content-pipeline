@@ -148,12 +148,12 @@ export const BOARD_COLUMNS: Array<{
 ];
 
 export const STATUS_LABELS: Record<ContentStatus, string> = {
-  pending_title: "Pending title",
-  title_submitted: "Title submitted",
+  pending_title: "Title needed",
+  title_submitted: "Title ready",
   writing: "Writing",
   content_submitted: "Under review",
-  revision: "Revision",
-  final: "Final",
+  revision: "Changes requested",
+  final: "Approved",
   scheduled: "Scheduled",
   published: "Published",
 };
