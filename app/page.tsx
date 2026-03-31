@@ -328,10 +328,6 @@ export default function Home() {
           onPrevWeek={() => setWeekKey((current) => addWeeks(current, -1))}
           onNextWeek={() => setWeekKey((current) => addWeeks(current, 1))}
           onOpenPin={() => setShowPinModal(true)}
-          onOpenMemberForm={() => {
-            setShowAddMember((current) => !current);
-            setShowAddContent(false);
-          }}
           onOpenContentForm={() => {
             setShowAddContent((current) => !current);
             setShowAddMember(false);

@@ -18,7 +18,6 @@ export function TopBar({
   onPrevWeek,
   onNextWeek,
   onOpenPin,
-  onOpenMemberForm,
   onOpenContentForm,
   onSync,
   onConnectTelegram,
@@ -30,7 +29,6 @@ export function TopBar({
   onPrevWeek: () => void;
   onNextWeek: () => void;
   onOpenPin: () => void;
-  onOpenMemberForm: () => void;
   onOpenContentForm: () => void;
   onSync: () => void;
   onConnectTelegram: () => void;
@@ -133,14 +131,6 @@ export function TopBar({
               <RefreshCw className="h-4 w-4" />
               Sync
             </button>
-            {/* <button
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-cyan-200 hover:bg-cyan-50"
-              onClick={onOpenMemberForm}
-              type="button"
-            >
-              <Plus className="h-4 w-4" />
-              Member
-            </button> */}
             <button
               className="inline-flex items-center gap-2 rounded-full bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700"
               onClick={onOpenContentForm}

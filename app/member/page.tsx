@@ -49,6 +49,25 @@ export default function MemberPage() {
     await loadMembers();
   }
 
+  async function removeMember(member: TeamMember) {
+    const confirmed = window.confirm(
+      `Remove ${member.name} from Traideas Content Pipeline? This also removes their related pipeline records.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    await parseJson(
+      await fetch(`/api/members/${member.id}`, {
+        method: "DELETE",
+      }),
+    );
+    setStatusMessage(`${member.name} was removed.`);
+    await loadMembers();
+  }
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef3f8_100%)]">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -98,7 +117,7 @@ export default function MemberPage() {
 
         {!loading ? (
           <div className="overflow-x-auto rounded-[24px] border border-slate-200 bg-white">
-            <table className="w-full min-w-[1180px]">
+            <table className="w-full min-w-[1280px]">
               <thead className="border-b border-slate-200 bg-slate-50/80">
                 <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <th className="px-5 py-4">Member</th>
@@ -106,6 +125,7 @@ export default function MemberPage() {
                   <th className="px-5 py-4">Pipeline writer</th>
                   <th className="px-5 py-4">Operator pool</th>
                   <th className="px-5 py-4">Telegram</th>
+                  <th className="px-5 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -244,6 +264,17 @@ export default function MemberPage() {
                             Refresh status
                           </button>
                         </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-5">
+                      <div className="flex justify-end">
+                        <button
+                          className="rounded-full border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                          onClick={() => void removeMember(member)}
+                          type="button"
+                        >
+                          Remove member
+                        </button>
                       </div>
                     </td>
                   </tr>
