@@ -6,7 +6,8 @@ import {
   logRouteHit,
   logRouteSuccess,
 } from "../../../../lib/api";
-import { updateContent } from "../../../../lib/db";
+import { getContentById, updateContent } from "../../../../lib/db";
+import { sendRevisionRequestedNotification } from "../../../../lib/telegram";
 import { type ContentStatus, type ContentTypeKey } from "../../../../lib/types";
 
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ export async function PATCH(
   logRouteHit(request);
   try {
     const { id } = await params;
+    const before = getContentById(id);
     const body = (await request.json()) as Partial<{
       title: string;
       type: ContentTypeKey | "";
@@ -34,6 +36,10 @@ export async function PATCH(
 
     if (!content) {
       return jsonError("Content not found.", 404);
+    }
+
+    if (before?.status !== "revision" && content.status === "revision") {
+      await sendRevisionRequestedNotification(content);
     }
 
     const response = NextResponse.json({ content });

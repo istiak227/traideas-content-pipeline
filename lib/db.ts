@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { addWeeks } from "./weeks";
 import {
@@ -9,7 +9,9 @@ import {
   type ContentStatus,
   type ContentTypeKey,
   type FeedbackNote,
+  type NotificationLog,
   type TeamMember,
+  type TelegramLinkToken,
 } from "./types";
 
 const schemaSql = `
@@ -17,8 +19,13 @@ CREATE TABLE IF NOT EXISTS team_members (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   initials TEXT NOT NULL,
+  email TEXT DEFAULT '',
   is_content_writer INTEGER DEFAULT 1,
   is_operator_eligible INTEGER DEFAULT 1,
+  telegram_chat_id TEXT DEFAULT '',
+  telegram_user_id TEXT DEFAULT '',
+  telegram_username TEXT DEFAULT '',
+  telegram_connected_at TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -58,6 +65,28 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE TABLE IF NOT EXISTS browser_pins (
   browser_key TEXT PRIMARY KEY,
   member_id TEXT NOT NULL,
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+
+CREATE TABLE IF NOT EXISTS telegram_link_tokens (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (member_id) REFERENCES team_members(id)
+);
+
+CREATE TABLE IF NOT EXISTS notification_logs (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL,
+  channel TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  message TEXT DEFAULT '',
+  error_text TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (member_id) REFERENCES team_members(id)
 );
 `;
@@ -126,8 +155,13 @@ function ensureColumn(
 function initDatabase(db: Database.Database) {
   db.pragma("journal_mode = WAL");
   db.exec(schemaSql);
+  ensureColumn(db, "team_members", "email", "TEXT DEFAULT ''");
   ensureColumn(db, "team_members", "is_content_writer", "INTEGER DEFAULT 1");
   ensureColumn(db, "team_members", "is_operator_eligible", "INTEGER DEFAULT 1");
+  ensureColumn(db, "team_members", "telegram_chat_id", "TEXT DEFAULT ''");
+  ensureColumn(db, "team_members", "telegram_user_id", "TEXT DEFAULT ''");
+  ensureColumn(db, "team_members", "telegram_username", "TEXT DEFAULT ''");
+  ensureColumn(db, "team_members", "telegram_connected_at", "TEXT DEFAULT ''");
 }
 
 export function getDb() {
@@ -143,7 +177,8 @@ function listMembersWhere(whereClause = "1 = 1", params: unknown[] = []) {
   const db = getDb();
   return db
     .prepare(
-      `SELECT id, name, initials, is_content_writer, is_operator_eligible, created_at
+      `SELECT id, name, initials, email, is_content_writer, is_operator_eligible,
+              telegram_chat_id, telegram_user_id, telegram_username, telegram_connected_at, created_at
        FROM team_members
        WHERE ${whereClause}
        ORDER BY created_at ASC, name ASC`,
@@ -163,6 +198,18 @@ export function listOperatorPoolMembers() {
   return listMembersWhere("is_operator_eligible = 1");
 }
 
+export function getMemberById(memberId: string) {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT id, name, initials, email, is_content_writer, is_operator_eligible,
+              telegram_chat_id, telegram_user_id, telegram_username, telegram_connected_at, created_at
+       FROM team_members
+       WHERE id = ?`,
+    )
+    .get(memberId) as TeamMember | undefined;
+}
+
 function memberIsContentWriter(memberId: string) {
   const db = getDb();
   const row = db
@@ -176,17 +223,13 @@ export function createMember(name: string, initials?: string) {
   const memberId = randomUUID();
   const safeInitials = (initials?.trim() || deriveInitials(name)).slice(0, 2).toUpperCase();
   db.prepare(
-    `INSERT INTO team_members (id, name, initials, is_content_writer, is_operator_eligible)
-     VALUES (?, ?, ?, 1, 1)`,
+    `INSERT INTO team_members (
+      id, name, initials, email, is_content_writer, is_operator_eligible,
+      telegram_chat_id, telegram_user_id, telegram_username, telegram_connected_at
+    ) VALUES (?, ?, ?, '', 1, 1, '', '', '', '')`,
   ).run(memberId, name.trim(), safeInitials);
 
-  return db
-    .prepare(
-      `SELECT id, name, initials, is_content_writer, is_operator_eligible, created_at
-       FROM team_members
-       WHERE id = ?`,
-    )
-    .get(memberId) as TeamMember;
+  return getMemberById(memberId) as TeamMember;
 }
 
 export function updateMember(
@@ -194,18 +237,13 @@ export function updateMember(
   updates: Partial<{
     name: string;
     initials: string;
+    email: string;
     is_content_writer: number;
     is_operator_eligible: number;
   }>,
 ) {
   const db = getDb();
-  const existing = db
-    .prepare(
-      `SELECT id, name, initials, is_content_writer, is_operator_eligible, created_at
-       FROM team_members
-       WHERE id = ?`,
-    )
-    .get(memberId) as TeamMember | undefined;
+  const existing = getMemberById(memberId);
 
   if (!existing) {
     return null;
@@ -222,23 +260,124 @@ export function updateMember(
 
   db.prepare(
     `UPDATE team_members
-     SET name = ?, initials = ?, is_content_writer = ?, is_operator_eligible = ?
+     SET name = ?, initials = ?, email = ?, is_content_writer = ?, is_operator_eligible = ?
      WHERE id = ?`,
   ).run(
     nextName,
     nextInitials,
+    updates.email?.trim() ?? existing.email,
     updates.is_content_writer ?? existing.is_content_writer,
     updates.is_operator_eligible ?? existing.is_operator_eligible,
     memberId,
   );
 
+  return getMemberById(memberId) as TeamMember;
+}
+
+export function createTelegramLinkToken(memberId: string, ttlMinutes = 15) {
+  const db = getDb();
+  const tokenRowId = randomUUID();
+  const token = randomBytes(24).toString("hex");
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
+
+  db.prepare(
+    `UPDATE telegram_link_tokens
+     SET used_at = datetime('now')
+     WHERE member_id = ?
+       AND COALESCE(used_at, '') = ''`,
+  ).run(memberId);
+
+  db.prepare(
+    `INSERT INTO telegram_link_tokens (id, member_id, token, expires_at, used_at)
+     VALUES (?, ?, ?, ?, '')`,
+  ).run(tokenRowId, memberId, token, expiresAt);
+
   return db
     .prepare(
-      `SELECT id, name, initials, is_content_writer, is_operator_eligible, created_at
-       FROM team_members
+      `SELECT id, member_id, token, expires_at, used_at, created_at
+       FROM telegram_link_tokens
        WHERE id = ?`,
     )
-    .get(memberId) as TeamMember;
+    .get(tokenRowId) as TelegramLinkToken;
+}
+
+export function getTelegramLinkToken(token: string) {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT id, member_id, token, expires_at, used_at, created_at
+       FROM telegram_link_tokens
+       WHERE token = ?`,
+    )
+    .get(token) as TelegramLinkToken | undefined;
+}
+
+export function markTelegramLinkTokenUsed(tokenId: string) {
+  const db = getDb();
+  db.prepare(
+    `UPDATE telegram_link_tokens
+     SET used_at = datetime('now')
+     WHERE id = ?`,
+  ).run(tokenId);
+}
+
+export function bindTelegramToMember(
+  memberId: string,
+  values: {
+    chatId: string;
+    userId: string;
+    username?: string;
+  },
+) {
+  const db = getDb();
+  const transaction = db.transaction(() => {
+    db.prepare(
+      `UPDATE team_members
+       SET telegram_chat_id = '', telegram_user_id = '', telegram_username = '', telegram_connected_at = ''
+       WHERE telegram_chat_id = ? OR telegram_user_id = ?`,
+    ).run(values.chatId, values.userId);
+
+    db.prepare(
+      `UPDATE team_members
+       SET telegram_chat_id = ?, telegram_user_id = ?, telegram_username = ?, telegram_connected_at = datetime('now')
+       WHERE id = ?`,
+    ).run(values.chatId, values.userId, values.username ?? "", memberId);
+  });
+
+  transaction();
+  return getMemberById(memberId) ?? null;
+}
+
+export function logNotificationAttempt({
+  memberId,
+  channel,
+  eventType,
+  status,
+  message,
+  errorText,
+}: {
+  memberId: string;
+  channel: string;
+  eventType: string;
+  status: string;
+  message?: string;
+  errorText?: string;
+}) {
+  const db = getDb();
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO notification_logs (
+      id, member_id, channel, event_type, status, message, error_text
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, memberId, channel, eventType, status, message ?? "", errorText ?? "");
+
+  return db
+    .prepare(
+      `SELECT id, member_id, channel, event_type, status, message, error_text, created_at
+       FROM notification_logs
+       WHERE id = ?`,
+    )
+    .get(id) as NotificationLog;
 }
 
 export function deleteMember(memberId: string) {
@@ -591,7 +730,8 @@ export function getOperator(weekKey: string) {
   const row = db
     .prepare(
       `SELECT wo.week_key, wo.member_id,
-              tm.id as tm_id, tm.name, tm.initials, tm.is_content_writer, tm.is_operator_eligible, tm.created_at
+              tm.id as tm_id, tm.name, tm.initials, tm.email, tm.is_content_writer, tm.is_operator_eligible,
+              tm.telegram_chat_id, tm.telegram_user_id, tm.telegram_username, tm.telegram_connected_at, tm.created_at
        FROM weekly_operators wo
        LEFT JOIN team_members tm ON tm.id = wo.member_id
        WHERE wo.week_key = ?`,
@@ -603,8 +743,13 @@ export function getOperator(weekKey: string) {
         tm_id: string | null;
         name: string | null;
         initials: string | null;
+        email: string | null;
         is_content_writer: number | null;
         is_operator_eligible: number | null;
+        telegram_chat_id: string | null;
+        telegram_user_id: string | null;
+        telegram_username: string | null;
+        telegram_connected_at: string | null;
         created_at: string | null;
       }
     | undefined;
@@ -621,8 +766,13 @@ export function getOperator(weekKey: string) {
           id: row.tm_id,
           name: row.name ?? "",
           initials: row.initials ?? "",
+          email: row.email ?? "",
           is_content_writer: row.is_content_writer ?? 0,
           is_operator_eligible: row.is_operator_eligible ?? 0,
+          telegram_chat_id: row.telegram_chat_id ?? "",
+          telegram_user_id: row.telegram_user_id ?? "",
+          telegram_username: row.telegram_username ?? "",
+          telegram_connected_at: row.telegram_connected_at ?? "",
           created_at: row.created_at ?? "",
         }
       : null,
@@ -645,7 +795,8 @@ export function getPin(browserKey: string) {
   const row = db
     .prepare(
       `SELECT bp.browser_key,
-              tm.id, tm.name, tm.initials, tm.is_content_writer, tm.is_operator_eligible, tm.created_at
+              tm.id, tm.name, tm.initials, tm.email, tm.is_content_writer, tm.is_operator_eligible,
+              tm.telegram_chat_id, tm.telegram_user_id, tm.telegram_username, tm.telegram_connected_at, tm.created_at
        FROM browser_pins bp
        LEFT JOIN team_members tm ON tm.id = bp.member_id
        WHERE bp.browser_key = ?`,
@@ -656,8 +807,13 @@ export function getPin(browserKey: string) {
         id: string | null;
         name: string | null;
         initials: string | null;
+        email: string | null;
         is_content_writer: number | null;
         is_operator_eligible: number | null;
+        telegram_chat_id: string | null;
+        telegram_user_id: string | null;
+        telegram_username: string | null;
+        telegram_connected_at: string | null;
         created_at: string | null;
       }
     | undefined;
@@ -672,8 +828,13 @@ export function getPin(browserKey: string) {
       id: row.id,
       name: row.name ?? "",
       initials: row.initials ?? "",
+      email: row.email ?? "",
       is_content_writer: row.is_content_writer ?? 0,
       is_operator_eligible: row.is_operator_eligible ?? 0,
+      telegram_chat_id: row.telegram_chat_id ?? "",
+      telegram_user_id: row.telegram_user_id ?? "",
+      telegram_username: row.telegram_username ?? "",
+      telegram_connected_at: row.telegram_connected_at ?? "",
       created_at: row.created_at ?? "",
     },
   };
@@ -688,6 +849,53 @@ export function setPin(browserKey: string, memberId: string) {
   ).run(browserKey, memberId);
 
   return getPin(browserKey);
+}
+
+export function getMembersWithPendingTitles(weekKey: string) {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT DISTINCT tm.id, tm.name, tm.initials, tm.email, tm.is_content_writer, tm.is_operator_eligible,
+              tm.telegram_chat_id, tm.telegram_user_id, tm.telegram_username, tm.telegram_connected_at, tm.created_at
+       FROM contents c
+       INNER JOIN team_members tm ON tm.id = c.member_id
+       WHERE c.week_key = ?
+         AND c.status = 'pending_title'
+         AND tm.is_content_writer = 1`,
+    )
+    .all(weekKey) as TeamMember[];
+}
+
+export function getMembersWithContentDueToday(weekKey: string) {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM feedback f WHERE f.content_id = c.id) as feedback_count
+       FROM contents c
+       INNER JOIN team_members tm ON tm.id = c.member_id
+       WHERE c.week_key = ?
+         AND c.status IN ('title_submitted', 'writing', 'content_submitted', 'revision')
+         AND tm.is_content_writer = 1
+       ORDER BY c.created_at ASC`,
+    )
+    .all(weekKey) as RawContentRow[];
+}
+
+export function getCurrentOperatorPendingTitleCount(weekKey: string) {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM contents c
+       INNER JOIN team_members tm ON tm.id = c.member_id
+       WHERE c.week_key = ?
+         AND c.status = 'pending_title'
+         AND tm.is_content_writer = 1`,
+    )
+    .get(weekKey) as { count: number };
+
+  return row.count;
 }
 
 export function resetAllData() {

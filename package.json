@@ -2,10 +2,15 @@
   "name": "traideas-content-pipeline",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "init:db": "node scripts/init-db.mjs",
     "predev": "npm run init:db",
     "dev": "next dev --webpack --hostname 127.0.0.1 --port 3000",
+    "prebot": "npm run init:db",
+    "bot": "node scripts/telegram-bot.mjs",
     "prebuild": "npm run init:db",
     "build": "next build --webpack",
     "prestart": "npm run init:db",
@@ -17,7 +22,8 @@
     "lucide-react": "^1.7.0",
     "next": "16.2.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

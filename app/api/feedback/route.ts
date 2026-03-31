@@ -7,6 +7,7 @@ import {
   logRouteSuccess,
 } from "../../../lib/api";
 import { addFeedback, getContentById } from "../../../lib/db";
+import { sendFeedbackNotification } from "../../../lib/telegram";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
       { feedback, content: getContentById(body.content_id) },
       { status: 201 },
     );
+    await sendFeedbackNotification(body.content_id, body.reviewer_name);
     logRouteSuccess(request, 201);
     return response;
   } catch (error) {

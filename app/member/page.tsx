@@ -19,6 +19,7 @@ export default function MemberPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
 
   async function loadMembers() {
     setLoading(true);
@@ -37,6 +38,17 @@ export default function MemberPage() {
     void loadMembers();
   }, []);
 
+  async function updateMember(memberId: string, body: Record<string, unknown>) {
+    await parseJson(
+      await fetch(`/api/members/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    await loadMembers();
+  }
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,_#f8fbff_0%,_#eef3f8_100%)]">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -48,7 +60,7 @@ export default function MemberPage() {
             Member settings
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            Toggle who appears in the writing pipeline and who can be chosen for the weekly operator pool.
+            Toggle who appears in the writing pipeline, who can be in the operator pool, and who is connected to Telegram.
           </p>
         </div>
 
@@ -72,6 +84,12 @@ export default function MemberPage() {
           </div>
         ) : null}
 
+        {statusMessage ? (
+          <div className="rounded-[24px] border border-cyan-200 bg-cyan-50 px-5 py-4 text-sm font-medium text-cyan-800">
+            {statusMessage}
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-16 text-center text-sm font-medium text-slate-500">
             Loading members...
@@ -80,12 +98,14 @@ export default function MemberPage() {
 
         {!loading ? (
           <div className="overflow-x-auto rounded-[24px] border border-slate-200 bg-white">
-            <table className="w-full min-w-[760px]">
+            <table className="w-full min-w-[1180px]">
               <thead className="border-b border-slate-200 bg-slate-50/80">
                 <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <th className="px-5 py-4">Member</th>
+                  <th className="px-5 py-4">Email</th>
                   <th className="px-5 py-4">Pipeline writer</th>
                   <th className="px-5 py-4">Operator pool</th>
+                  <th className="px-5 py-4">Telegram</th>
                 </tr>
               </thead>
               <tbody>
@@ -101,6 +121,21 @@ export default function MemberPage() {
                       </div>
                     </td>
                     <td className="px-5 py-5">
+                      <input
+                        className="w-full min-w-52 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none transition focus:border-cyan-400"
+                        defaultValue={member.email}
+                        placeholder="member@example.com"
+                        onBlur={async (event) => {
+                          const nextEmail = event.target.value.trim();
+                          if (nextEmail === member.email) {
+                            return;
+                          }
+                          await updateMember(member.id, { email: nextEmail });
+                          setStatusMessage("Member email updated.");
+                        }}
+                      />
+                    </td>
+                    <td className="px-5 py-5">
                       <button
                         className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                           member.is_content_writer === 1
@@ -108,16 +143,9 @@ export default function MemberPage() {
                             : "bg-slate-100 text-slate-600"
                         }`}
                         onClick={async () => {
-                          await parseJson(
-                            await fetch(`/api/members/${member.id}`, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                is_content_writer: member.is_content_writer === 1 ? 0 : 1,
-                              }),
-                            }),
-                          );
-                          await loadMembers();
+                          await updateMember(member.id, {
+                            is_content_writer: member.is_content_writer === 1 ? 0 : 1,
+                          });
                         }}
                         type="button"
                       >
@@ -132,22 +160,91 @@ export default function MemberPage() {
                             : "bg-slate-100 text-slate-600"
                         }`}
                         onClick={async () => {
-                          await parseJson(
-                            await fetch(`/api/members/${member.id}`, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                is_operator_eligible:
-                                  member.is_operator_eligible === 1 ? 0 : 1,
-                              }),
-                            }),
-                          );
-                          await loadMembers();
+                          await updateMember(member.id, {
+                            is_operator_eligible:
+                              member.is_operator_eligible === 1 ? 0 : 1,
+                          });
                         }}
                         type="button"
                       >
                         {member.is_operator_eligible === 1 ? "On" : "Off"}
                       </button>
+                    </td>
+                    <td className="px-5 py-5">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              member.telegram_chat_id
+                                ? "bg-green-100 text-green-800"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {member.telegram_chat_id ? "Connected" : "Not connected"}
+                          </span>
+                          {member.telegram_username ? (
+                            <span className="text-sm font-medium text-slate-600">
+                              @{member.telegram_username}
+                            </span>
+                          ) : null}
+                        </div>
+                        {member.telegram_connected_at ? (
+                          <p className="text-xs text-slate-500">
+                            Connected {member.telegram_connected_at}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-700">
+                            Telegram not connected yet.
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="rounded-full border border-cyan-200 px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50"
+                            onClick={async () => {
+                              const result = await parseJson<{
+                                deep_link: string;
+                                expires_at: string;
+                              }>(
+                                await fetch("/api/telegram/connect-link", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ member_id: member.id }),
+                                }),
+                              );
+                              window.open(result.deep_link, "_blank", "noopener,noreferrer");
+                              setStatusMessage(
+                                `Open Telegram, press Start, then come back here. Link expires at ${result.expires_at}.`,
+                              );
+                            }}
+                            type="button"
+                          >
+                            {member.telegram_chat_id ? "Reconnect Telegram" : "Connect Telegram"}
+                          </button>
+                          <button
+                            className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            onClick={async () => {
+                              await parseJson(
+                                await fetch("/api/telegram/test", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ member_id: member.id }),
+                                }),
+                              );
+                              setStatusMessage("Test message request sent.");
+                            }}
+                            type="button"
+                          >
+                            Send test message
+                          </button>
+                          <button
+                            className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            onClick={() => void loadMembers()}
+                            type="button"
+                          >
+                            Refresh status
+                          </button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))}

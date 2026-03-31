@@ -48,20 +48,33 @@ export function PinModal({
               }}
               type="button"
             >
-              <Avatar
-                initials={member.initials}
-                index={memberIndexes[member.id] ?? 0}
-                size="md"
-              />
-              <div>
-                <p className="font-semibold text-slate-900">{member.name}</p>
-                <p className="text-sm text-slate-500">{member.initials}</p>
-              </div>
-            </button>
-          ))}
+                    <Avatar
+                      initials={member.initials}
+                      index={memberIndexes[member.id] ?? 0}
+                      size="md"
+                    />
+                    <div>
+                      <p className="font-semibold text-slate-900">{member.name}</p>
+                      <p className="text-sm text-slate-500">{member.initials}</p>
+                      <p className="text-xs font-medium text-slate-500">
+                        Telegram:{" "}
+                        <span
+                          className={
+                            member.telegram_chat_id ? "text-green-700" : "text-amber-700"
+                          }
+                        >
+                          {member.telegram_chat_id
+                            ? member.telegram_username
+                              ? `Connected as @${member.telegram_username}`
+                              : "Connected"
+                            : "Not connected"}
+                        </span>
+                      </p>
+                    </div>
+                  </button>
+                ))}
         </div>
       </div>
     </div>
   );
 }
-

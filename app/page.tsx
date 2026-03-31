@@ -60,6 +60,7 @@ export default function Home() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
   const detailRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -223,6 +224,26 @@ export default function Home() {
     setRefreshTick((current) => current + 1);
   }
 
+  async function connectPinnedMemberTelegram() {
+    if (!pinnedMember) {
+      setError("Set your identity first, then connect Telegram.");
+      return;
+    }
+
+    const result = await parseJson<{ deep_link: string; expires_at: string }>(
+      await fetch("/api/telegram/connect-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ member_id: pinnedMember.id }),
+      }),
+    );
+
+    window.open(result.deep_link, "_blank", "noopener,noreferrer");
+    setStatusMessage(
+      `Open Telegram, press Start, then come back here. Link expires at ${result.expires_at}.`,
+    );
+  }
+
   async function patchContent(id: string, body: Partial<ContentItem>) {
     await parseJson<{ content: ContentItem }>(
       await fetch(`/api/contents/${id}`, {
@@ -316,6 +337,8 @@ export default function Home() {
             setShowAddMember(false);
           }}
           onSync={() => void syncCurrentWeek()}
+          onConnectTelegram={() => void connectPinnedMemberTelegram()}
+          onRefreshPinnedMember={() => void refresh()}
         />
 
         {showAddMember ? (
@@ -395,6 +418,12 @@ export default function Home() {
         {error ? (
           <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-medium whitespace-pre-wrap text-rose-700">
             {error}
+          </div>
+        ) : null}
+
+        {statusMessage ? (
+          <div className="rounded-[24px] border border-cyan-200 bg-cyan-50 px-5 py-4 text-sm font-medium text-cyan-800">
+            {statusMessage}
           </div>
         ) : null}
 

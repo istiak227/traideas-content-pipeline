@@ -7,6 +7,7 @@ import {
   logRouteSuccess,
 } from "../../../lib/api";
 import { getOperator, setOperator } from "../../../lib/db";
+import { sendOperatorAssignedNotification } from "../../../lib/telegram";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,8 +42,10 @@ export async function POST(request: Request) {
       return jsonError("week_key and member_id are required.", 400);
     }
 
+    const operator = setOperator(body.week_key, body.member_id);
+    await sendOperatorAssignedNotification(body.member_id);
     const response = NextResponse.json({
-      operator: setOperator(body.week_key, body.member_id),
+      operator,
     });
     logRouteSuccess(request, 200);
     return response;

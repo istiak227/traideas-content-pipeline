@@ -23,8 +23,13 @@ export interface TeamMember {
   id: string;
   name: string;
   initials: string;
+  email: string;
   is_content_writer: number;
   is_operator_eligible: number;
+  telegram_chat_id: string;
+  telegram_user_id: string;
+  telegram_username: string;
+  telegram_connected_at: string;
   created_at: string;
 }
 
@@ -69,6 +74,26 @@ export interface LeaderboardRow {
   activeWeeks: number;
   topFormat: string;
   typeCounts: Record<ContentTypeKey, number>;
+}
+
+export interface TelegramLinkToken {
+  id: string;
+  member_id: string;
+  token: string;
+  expires_at: string;
+  used_at: string;
+  created_at: string;
+}
+
+export interface NotificationLog {
+  id: string;
+  member_id: string;
+  channel: string;
+  event_type: string;
+  status: string;
+  message: string;
+  error_text: string;
+  created_at: string;
 }
 
 export const CONTENT_TYPES: Array<{

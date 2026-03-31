@@ -26,8 +26,13 @@ function main() {
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.exec(schemaSql);
+  ensureColumn(db, "team_members", "email", "TEXT DEFAULT ''");
   ensureColumn(db, "team_members", "is_content_writer", "INTEGER DEFAULT 1");
   ensureColumn(db, "team_members", "is_operator_eligible", "INTEGER DEFAULT 1");
+  ensureColumn(db, "team_members", "telegram_chat_id", "TEXT DEFAULT ''");
+  ensureColumn(db, "team_members", "telegram_user_id", "TEXT DEFAULT ''");
+  ensureColumn(db, "team_members", "telegram_username", "TEXT DEFAULT ''");
+  ensureColumn(db, "team_members", "telegram_connected_at", "TEXT DEFAULT ''");
   db.close();
 
   log(
