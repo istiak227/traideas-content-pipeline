@@ -44,9 +44,14 @@ export async function POST(request: Request) {
 
     const tokenRow = createTelegramLinkToken(memberId, 15);
     const deepLink = `https://t.me/${botUsername}?start=${tokenRow.token}`;
+    const startCommand = `/start ${tokenRow.token}`;
+    const webLink = `https://web.telegram.org/a/#@${botUsername}`;
 
     const response = NextResponse.json({
       deep_link: deepLink,
+      web_link: webLink,
+      start_command: startCommand,
+      bot_username: botUsername,
       expires_at: tokenRow.expires_at,
       member,
     });

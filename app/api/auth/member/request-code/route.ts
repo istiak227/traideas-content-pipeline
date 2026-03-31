@@ -40,6 +40,9 @@ export async function POST(request: Request) {
       const response = NextResponse.json({
         step: "connect_telegram",
         deep_link: `https://t.me/${botUsername}?start=${tokenRow.token}`,
+        web_link: `https://web.telegram.org/a/#@${botUsername}`,
+        start_command: `/start ${tokenRow.token}`,
+        bot_username: botUsername,
         expires_at: tokenRow.expires_at,
         member: {
           id: member.id,
