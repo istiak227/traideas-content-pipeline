@@ -36,6 +36,9 @@ type MemberLoginResponse =
   | {
       step: "connect_telegram";
       deep_link: string;
+      web_link: string;
+      start_command: string;
+      bot_username: string;
       expires_at: string;
       member: { id: string; name: string; username: string };
     }
@@ -76,6 +79,9 @@ export default function Home() {
     "username",
   );
   const [loginDeepLink, setLoginDeepLink] = useState("");
+  const [loginWebLink, setLoginWebLink] = useState("");
+  const [loginStartCommand, setLoginStartCommand] = useState("");
+  const [loginBotUsername, setLoginBotUsername] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginStatusMessage, setLoginStatusMessage] = useState("");
@@ -90,7 +96,10 @@ export default function Home() {
 
       try {
         const sessionJson = await parseJson<{ session: AuthSession | null }>(
-          await fetch("/api/auth/session", { cache: "no-store" }),
+          await fetch("/api/auth/session", {
+            cache: "no-store",
+            credentials: "include",
+          }),
         );
 
         if (cancelled) {
@@ -259,6 +268,7 @@ export default function Home() {
       const result = await parseJson<MemberLoginResponse>(
         await fetch("/api/auth/member/request-code", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: loginUsername.trim() }),
         }),
@@ -267,6 +277,9 @@ export default function Home() {
       if (result.step === "connect_telegram") {
         setLoginStep("connect_telegram");
         setLoginDeepLink(result.deep_link);
+        setLoginWebLink(result.web_link);
+        setLoginStartCommand(result.start_command);
+        setLoginBotUsername(result.bot_username);
         setLoginStatusMessage(
           `Connect Telegram for @${result.member.username}. This link expires at ${result.expires_at}.`,
         );
@@ -275,6 +288,9 @@ export default function Home() {
 
       setLoginStep("enter_code");
       setLoginDeepLink("");
+      setLoginWebLink("");
+      setLoginStartCommand("");
+      setLoginBotUsername("");
       setLoginStatusMessage(
         `A one-time login code was sent to Telegram for @${result.member.username}.`,
       );
@@ -291,9 +307,10 @@ export default function Home() {
     setLoginStatusMessage("");
 
     try {
-      await parseJson(
+      const result = await parseJson<{ success: true; session: AuthSession }>(
         await fetch("/api/auth/member/verify-code", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             username: loginUsername.trim(),
@@ -302,6 +319,9 @@ export default function Home() {
         }),
       );
 
+      setSession(result.session);
+      setLoginError("");
+      setLoginStatusMessage("");
       setLoginCode("");
       setLoginStep("username");
       await refresh();
@@ -316,6 +336,7 @@ export default function Home() {
     await parseJson(
       await fetch("/api/auth/logout", {
         method: "POST",
+        credentials: "include",
       }),
     );
     setSession(null);
@@ -327,6 +348,10 @@ export default function Home() {
     setShowAddContent(false);
     setLoginCode("");
     setLoginStep("username");
+    setLoginDeepLink("");
+    setLoginWebLink("");
+    setLoginStartCommand("");
+    setLoginBotUsername("");
     setStatusMessage("");
     setError("");
     await refresh();
@@ -427,9 +452,12 @@ export default function Home() {
         <div className="mx-auto flex min-h-screen w-full max-w-[1440px] items-center px-4 py-6 sm:px-6 lg:px-8">
           <MemberLoginCard
             code={loginCode}
-            deepLink={loginDeepLink}
-            error={loginError}
-            loading={loginLoading}
+          deepLink={loginDeepLink}
+          webLink={loginWebLink}
+          startCommand={loginStartCommand}
+          botUsername={loginBotUsername}
+          error={loginError}
+          loading={loginLoading}
             onCodeChange={setLoginCode}
             onRequestCode={requestMemberLoginCode}
             onUsernameChange={setLoginUsername}

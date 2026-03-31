@@ -32,7 +32,10 @@ export default function MemberPage() {
 
     try {
       const sessionResult = await parseJson<{ session: AuthSession | null }>(
-        await fetch("/api/auth/session", { cache: "no-store" }),
+        await fetch("/api/auth/session", {
+          cache: "no-store",
+          credentials: "include",
+        }),
       );
       setSession(sessionResult.session);
 
@@ -92,6 +95,7 @@ export default function MemberPage() {
       await parseJson(
         await fetch("/api/auth/admin/login", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             username: adminUsername,
@@ -99,6 +103,7 @@ export default function MemberPage() {
           }),
         }),
       );
+      setSession({ role: "admin", member: null });
       setAdminPassword("");
       await loadSessionAndMembers();
     } catch (loginError) {
@@ -112,6 +117,7 @@ export default function MemberPage() {
     await parseJson(
       await fetch("/api/auth/logout", {
         method: "POST",
+        credentials: "include",
       }),
     );
     setSession(null);

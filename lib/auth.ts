@@ -4,6 +4,10 @@ import { getAuthSessionByToken } from "./db";
 
 const SESSION_COOKIE_NAME = "tcp_session";
 
+function shouldUseSecureCookies() {
+  return process.env.COOKIE_SECURE === "true";
+}
+
 function parseCookie(cookieHeader: string | null, key: string) {
   if (!cookieHeader) {
     return "";
@@ -37,7 +41,7 @@ export function setSessionCookie(
     value: sessionToken,
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     expires: new Date(expiresAt),
   });
@@ -49,7 +53,7 @@ export function clearSessionCookie(response: NextResponse) {
     value: "",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookies(),
     path: "/",
     expires: new Date(0),
   });
